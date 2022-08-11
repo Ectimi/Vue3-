@@ -55,13 +55,24 @@ const targetMap = new WeakMap();
 export function effect(fn: Function, options: TEffectOptions) {
   //这里 fn 可以根据状态变化，重新执行，effect可以嵌套着写
 
-  const _effect = new ReactiveEffect(fn, options.scheduler); //创建响应式 effect
+  const _effect = new ReactiveEffect(fn, options?.scheduler); //创建响应式 effect
   _effect.run(); //默认先执行一次
 
   const runner: TRunner = _effect.run.bind(_effect) as TRunner;
   runner.effect = _effect;
 
   return runner;
+}
+
+export function trackEffects(dep: Set<ReactiveEffect>) {
+  if (activeEffect instanceof ReactiveEffect) {
+    let shouldTrack = !dep.has(activeEffect);
+    if (shouldTrack) {
+      dep.add(activeEffect);
+      //让effect记录信对应的dep，清理的时候会用到
+      activeEffect.deps.push(dep);
+    }
+  }
 }
 
 /**
@@ -82,12 +93,22 @@ export function track(target: Object, key: string) {
   if (!dep) {
     depsMap.set(key, (dep = new Set()));
   }
-  let shouldTrack = !dep.has(activeEffect);
-  if (shouldTrack) {
-    dep.add(activeEffect);
-    //让effect记录信对应的dep，清理的时候会用到
-    activeEffect.deps.push(dep);
-  }
+  trackEffects(dep);
+}
+
+export function triggerEffects(effects: Set<ReactiveEffect>) {
+  effects = new Set(effects);
+  effects.forEach((effect) => {
+    //如果在effect里进行set操作，会出现在执行effect的时候，又要执行自己，造成无限调用，所以需要屏蔽掉
+    if (effect !== activeEffect) {
+      //如果用户传入了调试函数，则使用用户的，否则默认刷新视图
+      if (effect.scheduler) {
+        effect.scheduler();
+      } else {
+        effect.run();
+      }
+    }
+  });
 }
 
 export function trigger(
@@ -100,17 +121,6 @@ export function trigger(
   if (!depsMap) return; //触发的值不在模板中使用，什么都不用干
   let effects = depsMap.get(key);
   if (effects) {
-    effects = new Set(effects);
-    effects.forEach((effect) => {
-      //如果在effect里进行set操作，会出现在执行effect的时候，又要执行自己，造成无限调用，所以需要屏蔽掉
-      if (effect !== activeEffect) {
-        //如果用户传入了调试函数，则使用用户的，否则默认刷新视图
-        if (effect.scheduler) {
-          effect.scheduler(); 
-        } else {
-          effect.run();
-        }
-      }
-    });
+    triggerEffects(effects);
   }
 }

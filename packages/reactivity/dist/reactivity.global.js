@@ -23,7 +23,8 @@ var VueReactivity = (() => {
   __export(src_exports, {
     computed: () => computed,
     effect: () => effect,
-    reactive: () => reactive
+    reactive: () => reactive,
+    watch: () => watch
   });
 
   // packages/reactivity/src/effect.ts
@@ -65,11 +66,20 @@ var VueReactivity = (() => {
   };
   var targetMap = /* @__PURE__ */ new WeakMap();
   function effect(fn, options) {
-    const _effect = new ReactiveEffect(fn, options.scheduler);
+    const _effect = new ReactiveEffect(fn, options == null ? void 0 : options.scheduler);
     _effect.run();
     const runner = _effect.run.bind(_effect);
     runner.effect = _effect;
     return runner;
+  }
+  function trackEffects(dep) {
+    if (activeEffect instanceof ReactiveEffect) {
+      let shouldTrack = !dep.has(activeEffect);
+      if (shouldTrack) {
+        dep.add(activeEffect);
+        activeEffect.deps.push(dep);
+      }
+    }
   }
   function track(target, key) {
     if (!activeEffect)
@@ -82,11 +92,19 @@ var VueReactivity = (() => {
     if (!dep) {
       depsMap.set(key, dep = /* @__PURE__ */ new Set());
     }
-    let shouldTrack = !dep.has(activeEffect);
-    if (shouldTrack) {
-      dep.add(activeEffect);
-      activeEffect.deps.push(dep);
-    }
+    trackEffects(dep);
+  }
+  function triggerEffects(effects) {
+    effects = new Set(effects);
+    effects.forEach((effect2) => {
+      if (effect2 !== activeEffect) {
+        if (effect2.scheduler) {
+          effect2.scheduler();
+        } else {
+          effect2.run();
+        }
+      }
+    });
   }
   function trigger(target, key, value, oldValue) {
     const depsMap = targetMap.get(target);
@@ -94,16 +112,7 @@ var VueReactivity = (() => {
       return;
     let effects = depsMap.get(key);
     if (effects) {
-      effects = new Set(effects);
-      effects.forEach((effect2) => {
-        if (effect2 !== activeEffect) {
-          if (effect2.scheduler) {
-            effect2.scheduler();
-          } else {
-            effect2.run();
-          }
-        }
-      });
+      triggerEffects(effects);
     }
   }
 
@@ -146,14 +155,37 @@ var VueReactivity = (() => {
     reactiveMap.set(target, proxy);
     return proxy;
   }
+  function isReactive(value) {
+    return !!(value && value["__v_isReactive" /* IS_REACTIVE */]);
+  }
 
   // packages/reactivity/src/computed.ts
   var ComputedRefImpl = class {
     constructor(getter, setter) {
       this.getter = getter;
       this.setter = setter;
+      this._dirty = true;
+      this.__v_isReadonly = true;
+      this.__v_isRef = true;
+      this._value = null;
+      this.dep = /* @__PURE__ */ new Set();
       this.effect = new ReactiveEffect(getter, () => {
+        if (!this._dirty) {
+          this._dirty = true;
+          triggerEffects(this.dep);
+        }
       });
+    }
+    get value() {
+      trackEffects(this.dep);
+      if (this._dirty) {
+        this._dirty = false;
+        this._value = this.effect.run();
+      }
+      return this._value;
+    }
+    set value(newValue) {
+      this._value = newValue;
     }
   };
   var computed = (getterOrOptions) => {
@@ -170,6 +202,30 @@ var VueReactivity = (() => {
     }
     return new ComputedRefImpl(getter, setter);
   };
+
+  // packages/reactivity/src/watch.ts
+  function traversal(value, set = /* @__PURE__ */ new Set()) {
+    if (!isObject(value))
+      return value;
+    let key;
+    for (key in value) {
+    }
+  }
+  function watch(source, cb) {
+    let getter = () => {
+    };
+    if (isReactive(source)) {
+      getter = () => traversal(source);
+    }
+    let oldValue;
+    const job = () => {
+      const newValue = effect2.run();
+      cb(newValue, oldValue);
+      oldValue = newValue;
+    };
+    const effect2 = new ReactiveEffect(getter, job);
+    oldValue = effect2.run();
+  }
   return __toCommonJS(src_exports);
 })();
 //# sourceMappingURL=reactivity.global.js.map

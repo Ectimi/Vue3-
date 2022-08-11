@@ -12,37 +12,23 @@
     <script src="./reactivity.global.js"></script>
     <script>
       let waiting = false;
-      const { effect, reactive } = VueReactivity;
+      const { effect, reactive, computed } = VueReactivity;
       const state = reactive({
-        flag: true,
-        name: 'tom',
-        age: 20,
-        address: { num: 100 },
+        firstname: 'tom',
+        lastname: 'mi',
+      });
+      console.log(state instanceof Proxy)
+      const fullname = computed(() => {
+        return state.firstname + ' ' + state.lastname;
       });
 
-      console.log(state.address)
-      let runner = effect(
-        () => {
-          document.body.innerHTML = state.age;
-        },
-        {
-          scheduler() {
-            if (!waiting) {
-              waiting = true;
-              setTimeout(() => {
-                runner();
-                waiting = false;
-              }, 1000);
-            }
-          },
-        }
-      );
+      effect(() => {
+        app.innerHTML = fullname.value;
+      });
 
-      state.age = 1000;
-      state.age = 2000;
-      state.age = 3000;
-      state.age = 4000;
-      state.age = 5000;
+      setTimeout(() => {
+        state.firstname = 'Pin';
+      }, 1000);
     </script>
   </body>
 </html>
