@@ -19,7 +19,7 @@ class ComputedRefImpl {
   constructor(public getter: Function, public setter: Function) {
     //将用户的getter放到effect中，effect会收集getter的依赖，
     this.effect = new ReactiveEffect(getter, () => {
-      //稍后依赖变化后，会执行此高度函数
+      //稍后依赖变化后，会执行此调度函数
       if (!this._dirty) {
         
         this._dirty = true;

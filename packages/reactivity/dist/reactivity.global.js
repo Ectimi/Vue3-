@@ -23,7 +23,11 @@ var VueReactivity = (() => {
   __export(src_exports, {
     computed: () => computed,
     effect: () => effect,
+    proxyRefs: () => proxyRefs,
     reactive: () => reactive,
+    ref: () => ref,
+    toRef: () => toRef,
+    toRefs: () => toRefs,
     watch: () => watch
   });
 
@@ -118,6 +122,7 @@ var VueReactivity = (() => {
 
   // packages/shared/src/index.ts
   var isObject = (value) => typeof value === "object";
+  var isFunction = (value) => typeof value === "function";
   var isArray = Array.isArray;
 
   // packages/reactivity/src/baseHandler.ts
@@ -207,24 +212,103 @@ var VueReactivity = (() => {
   function traversal(value, set = /* @__PURE__ */ new Set()) {
     if (!isObject(value))
       return value;
+    if (set.has(value))
+      return value;
+    set.add(value);
     let key;
     for (key in value) {
+      traversal(value[key], set);
     }
+    return value;
   }
   function watch(source, cb) {
     let getter = () => {
     };
     if (isReactive(source)) {
       getter = () => traversal(source);
+    } else if (isFunction(source)) {
+      getter = source;
     }
+    let cleanup;
+    const onCleanup = (fn) => {
+      cleanup = fn;
+    };
     let oldValue;
     const job = () => {
+      if (cleanup)
+        cleanup();
       const newValue = effect2.run();
-      cb(newValue, oldValue);
+      cb(newValue, oldValue, onCleanup);
       oldValue = newValue;
     };
     const effect2 = new ReactiveEffect(getter, job);
     oldValue = effect2.run();
+  }
+
+  // packages/reactivity/src/ref.ts
+  function toReactive(value) {
+    return isObject(value) ? reactive(value) : value;
+  }
+  var RefImpl = class {
+    constructor(rawValue) {
+      this.rawValue = rawValue;
+      this.__v_isRef = true;
+      this.dep = /* @__PURE__ */ new Set();
+      this._value = toReactive(rawValue);
+    }
+    get value() {
+      trackEffects(this.dep);
+      return this._value;
+    }
+    set value(newValue) {
+      if (newValue !== this.rawValue) {
+        this._value = toReactive(newValue);
+        this.rawValue = newValue;
+        triggerEffects(this.dep);
+      }
+    }
+  };
+  function ref(value) {
+    return new RefImpl(value);
+  }
+  var ObjectRefImpl = class {
+    constructor(object, key) {
+      this.object = object;
+      this.key = key;
+    }
+    get value() {
+      return this.object[this.key];
+    }
+    set value(newValue) {
+      this.object[this.key] = newValue;
+    }
+  };
+  function toRef(object, key) {
+    return new ObjectRefImpl(object, key);
+  }
+  function toRefs(object) {
+    const result = isArray(object) ? new Array(object.length) : {};
+    for (let key in object) {
+      result[key] = toRef(object, key);
+    }
+    return result;
+  }
+  function proxyRefs(object) {
+    return new Proxy(object, {
+      get(target, key, recevier) {
+        let r = Reflect.get(target, key, recevier);
+        return r.__v_isRef ? r.value : r;
+      },
+      set(target, key, value, recevier) {
+        let oldValue = Reflect.get(target, key);
+        if (oldValue.__v_isRef) {
+          oldValue.value = value;
+          return true;
+        } else {
+          return Reflect.set(target, key, value, recevier);
+        }
+      }
+    });
   }
   return __toCommonJS(src_exports);
 })();

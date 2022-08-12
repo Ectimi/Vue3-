@@ -12,23 +12,22 @@
     <script src="./reactivity.global.js"></script>
     <script>
       let waiting = false;
-      const { ref, toRefs, effect, reactive, proxyRefs } = VueReactivity;
-      const flag = ref(false);
-      const state = reactive({ name: 'j', age: 12 });
-      const { name, age } = toRefs(state);
-      const firstname = ref('yang');
-      const lastname = ref('pin');
-      const people = proxyRefs({ firstname, lastname });
-  
+      const { effect, reactive, computed } = VueReactivity;
+      const state = reactive({
+        firstname: 'tom',
+        lastname: 'mi',
+      });
+      console.log(state instanceof Proxy)
+      const fullname = computed(() => {
+        return state.firstname + ' ' + state.lastname;
+      });
 
       effect(() => {
-        app.innerHTML =
-          (flag.value ? '你好' : '不好') +
-          ` ${name.value} __ ${people.firstname}`;
+        app.innerHTML = fullname.value;
       });
 
       setTimeout(() => {
-        flag.value = !flag.value;
+        state.firstname = 'Pin';
       }, 1000);
     </script>
   </body>
